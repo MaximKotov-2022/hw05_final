@@ -42,8 +42,6 @@ class PostURLTests(TestCase):
         self.authorized_client.force_login(self.user)
         self.authorized_client_no_author.force_login(self.user_no_author)
 
-
-
     def test_urls_uses_correct_template(self):
         for address in self.templates:
             with self.subTest(address=address):
