@@ -42,6 +42,8 @@ class PostURLTests(TestCase):
         self.authorized_client.force_login(self.user)
         self.authorized_client_no_author.force_login(self.user_no_author)
 
+
+
     def test_urls_uses_correct_template(self):
         for address in self.templates:
             with self.subTest(address=address):
@@ -90,3 +92,10 @@ class PostURLTests(TestCase):
         """Страница /unexisting_page/ выдаёт ошибку"""
         response = self.guest_client.get("/unexisting_page/")
         self.assertEqual(response.status_code, HTTPStatus.NOT_FOUND)
+
+    def test_urls_uses_correct_template(self):
+        """URL-адрес использует соответствующий шаблон."""
+        for url, template in self.templates_url_names.items():
+            with self.subTest(template=template):
+                response = self.authorized_client.get(url)
+                self.assertTemplateUsed(response, template)
