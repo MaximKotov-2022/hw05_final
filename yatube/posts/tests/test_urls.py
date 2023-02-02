@@ -33,6 +33,7 @@ class PostURLTests(TestCase):
             f"/posts/{cls.post.pk}/": "posts/post_detail.html",
             f"/posts/{cls.post.pk}/edit/": "posts/create_post.html",
             "/create/": "posts/create_post.html",
+            '/Not_site_page/': 'core/404.html',
         }
 
     def setUp(self):

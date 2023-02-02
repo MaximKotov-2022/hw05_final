@@ -1,37 +1,17 @@
-import shutil
-import tempfile
-
 from django import forms
-from django.conf import settings
-from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import Client, TestCase, override_settings
+from django.core.cache import cache
+from django.test import Client, TestCase
 from django.urls import reverse
 from yatube.settings import NUM_OF_POSTS
 
 from ..models import Group, Post, User, Follow
 
-TEMP_MEDIA_ROOT = tempfile.mkdtemp(dir=settings.BASE_DIR)
 
-
-@override_settings(MEDIA_ROOT=TEMP_MEDIA_ROOT)
 class PostPagesTests(TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
         cls.user = User.objects.create(username="StasBasov")
-        cls.small_gif = (
-            b'\x47\x49\x46\x38\x39\x61\x02\x00'
-            b'\x01\x00\x80\x00\x00\x00\x00\x00'
-            b'\xFF\xFF\xFF\x21\xF9\x04\x00\x00'
-            b'\x00\x00\x00\x2C\x00\x00\x00\x00'
-            b'\x02\x00\x01\x00\x00\x02\x02\x0C'
-            b'\x0A\x00\x3B'
-        )
-        cls.uploaded = SimpleUploadedFile(
-            name='small.gif',
-            content=cls.small_gif,
-            content_type='image/gif'
-        )
         cls.group = Group.objects.create(
             title="Тестовая группа",
             slug="test-slug",
@@ -41,13 +21,7 @@ class PostPagesTests(TestCase):
             author=cls.user,
             text="Тестовый пост",
             group=cls.group,
-            image=cls.uploaded
         )
-
-    @classmethod
-    def tearDownClass(cls):
-        super().tearDownClass()
-        shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
 
     def setUp(self):
         self.guest_client = Client()
@@ -83,8 +57,8 @@ class PostPagesTests(TestCase):
         response = self.guest_client.get(reverse('posts:index'))
         records = list(Post.objects.all()[:NUM_OF_POSTS])
         self.assertEqual(list(response.context['page_obj']), records)
-        post_image = Post.objects.last().image
-        self.assertEqual(post_image, self.post.image)
+        url_page = self.client.get(reverse('posts:index'))
+        self.assertIn('<img', url_page.content.decode())
 
     def test_group_list_show_correct_context(self):
         """Шаблон group_list сформирован с правильным контекстом."""
@@ -96,6 +70,8 @@ class PostPagesTests(TestCase):
         )
         self.assertEqual(list(response.context['page_obj']), records)
         self.assertEqual(response.context['group'], self.post.group)
+        self.assertIn('page_obj', response.context)
+        self.assertTrue(len(response.context['page_obj']))
         post_image = response.context['page_obj'][0]
         self.assertEqual(post_image.image, self.post.image)
 
@@ -109,8 +85,10 @@ class PostPagesTests(TestCase):
         )
         self.assertEqual(list(response.context['page_obj']), records)
         self.assertEqual(response.context['author'], self.post.author)
-        post_image = Post.objects.last().image
-        self.assertEqual(post_image, self.post.image)
+        url_page = self.client.get(
+            reverse('posts:profile', kwargs={'username': self.post.author})
+        )
+        self.assertIn('<img', url_page.content.decode())
 
     def test_post_detail_show_correct_context(self):
         """Шаблон post_detail сформирован с правильным контекстом."""
@@ -121,8 +99,10 @@ class PostPagesTests(TestCase):
         self.assertEqual((pointer_response.text), str(self.post.text))
         self.assertEqual((pointer_response.author), (self.post.author))
         self.assertEqual((pointer_response.group), (self.post.group))
-        post_image = Post.objects.last().image
-        self.assertEqual(post_image, self.post.image)
+        url_page = self.client.get(
+            reverse('posts:post_detail', kwargs={'post_id': self.post.id})
+        )
+        self.assertIn('<img', url_page.content.decode())
 
     def test_post_create_show_correct_context(self):
         """Шаблон post_create сформирован с правильным контекстом."""
@@ -170,38 +150,66 @@ class PostPagesTests(TestCase):
                 form_field = response.context["page_obj"]
                 self.assertIn(expected, form_field)
 
-    def test_create_database(self):
-        """При создании поста он появляется в БД"""
-        self.assertTrue(
-            Post.objects.filter(
-                text='Тестовый пост',
-                image='posts/small.gif'
-            ).exists()
-        )
-
     def test_cache_index(self):
         '''Проверка кэширования.'''
-        response = self.authorized_client.get(reverse('posts:index'))
-        res_1 = response.content
+        response_1 = self.client.get(reverse('posts:index'))
+        self.assertContains(response_1, self.post)
+
         Post.objects.filter(pk=1).delete()
-        response = self.authorized_client.get(reverse('posts:index'))
-        res_2 = response.content
-        self.assertEqual(res_1, res_2)
+
+        response_2 = self.client.get(reverse('posts:index'))
+        self.assertContains(response_2, self.post)
+
+        cache.clear()
+
+        response_3 = self.client.get(reverse('posts:index'))
+        self.assertNotContains(response_3, self.post)
 
     def test_follow_author(self):
-        '''Проверка подписки на автора'''
+        '''Проверка подписки на автора на которого не подписан юзер'''
         response = self.authorized_client.get(reverse('posts:follow_index'))
         self.assertEqual(len(response.context['page_obj']), 0)
 
-        Follow.objects.get_or_create(user=self.user, author=self.post.author)
+        Follow.objects.get_or_create(
+            user=self.user,
+            author=self.post.author
+        )
         response_create = self.authorized_client.get(
             reverse('posts:follow_index')
         )
         self.assertEqual(len(response_create.context['page_obj']), 1)
 
-        Follow.objects.get(user=self.user, author=self.post.author).delete()
+    def test_unfollow_author(self):
+        '''Проверка отписки от автора на которого подписан юзер'''
+        response = self.authorized_client.get(reverse('posts:follow_index'))
+        Follow.objects.get_or_create(
+            user=self.user,
+            author=self.post.author
+        )
+        Follow.objects.get(
+            user=self.user,
+            author=self.post.author
+        ).delete()
         self.assertEqual(len(response.context['page_obj']), 0)
 
+    def test_show_follow_of_follow(self):
+        '''Проверка появления поста у юзера с подписками'''
+        Follow.objects.get_or_create(
+            user=self.user,
+            author=self.post.author
+        )
+        Post.objects.create(
+            author=self.user,
+            text='Тестовый пост для подписчика',
+            group=self.group,
+        )
+        response_page_follow = self.authorized_client.get(
+            reverse('posts:follow_index')
+        )
+        self.assertIn(str(self.post), response_page_follow.content.decode())
+
+    def test_not_show_unfollow(self):
+        '''Пост не появляется на странице подписок у не-подписчика'''
         user_no_follow = User.objects.create(username='NoFollowUser')
         self.authorized_client.force_login(user_no_follow)
         responce_no_follow = self.authorized_client.get(

@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth import get_user_model
 from core.models import CreatedModel
+from django.db.models import CheckConstraint, Q, F
 
 
 User = get_user_model()
@@ -74,7 +75,7 @@ class Comment(CreatedModel):
         ordering = ('-created',)
 
     def __str__(self):
-        return self.text
+        return self.text[:15]
 
 
 class Follow(models.Model):
@@ -88,3 +89,11 @@ class Follow(models.Model):
         on_delete=models.CASCADE,
         related_name='following',
     )
+
+    class Meta:
+        constraints = [
+            CheckConstraint(
+                check=Q(author__exclude=F('user')),
+                name='user_not_author',
+            ),
+        ]

@@ -48,7 +48,6 @@ class PostModelTest(TestCase):
         field_verboses = {
             'text': 'Введите текст поста',
             'group': 'Группа, к которой будет относиться пост',
-
         }
         for value, expected in field_verboses.items():
             with self.subTest(value=value):
