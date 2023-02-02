@@ -1,6 +1,8 @@
 {% if user.is_authenticated %}
   <div class="row my-3">
+    {% with request.resolver_match.view_name as view_name %}
     <ul class="nav nav-tabs">
+      <ul class="nav nav-pills">
       <li class="nav-item">
         <a
           class="nav-link {% if view_name == 'posts:index' %}active{% endif %}"
@@ -18,5 +20,6 @@
         </a>
       </li>
     </ul>
+    {% endwith %}
   </div>
 {% endif %}
