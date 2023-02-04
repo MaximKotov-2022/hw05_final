@@ -90,13 +90,10 @@ class Follow(models.Model):
         related_name='following',
     )
 
-    # Через БД всё равно можно создать подписку, если автор=юзер,
-    # Если бы всё правльно работало, то у нас бы такая свзязь в БД
-    # не сохранилась бы и выдала ошибку?
     class Meta:
         constraints = [
             CheckConstraint(
-                check=Q(author__exclude=F('user')),
+                check=~Q(author=F('user')),
                 name='user_not_author',
             ),
         ]
