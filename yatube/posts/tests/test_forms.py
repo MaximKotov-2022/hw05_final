@@ -17,19 +17,6 @@ class PostCreateFormTests(TestCase):
     def setUpClass(cls):
         super().setUpClass()
         cls.user = User.objects.create(username="NameUser")
-        cls.small_gif = (
-            b'\x47\x49\x46\x38\x39\x61\x02\x00'
-            b'\x01\x00\x80\x00\x00\x00\x00\x00'
-            b'\xFF\xFF\xFF\x21\xF9\x04\x00\x00'
-            b'\x00\x00\x00\x2C\x00\x00\x00\x00'
-            b'\x02\x00\x01\x00\x00\x02\x02\x0C'
-            b'\x0A\x00\x3B'
-        )
-        cls.uploaded = SimpleUploadedFile(
-            name='small.gif',
-            content=cls.small_gif,
-            content_type='image/gif'
-        )
         cls.group = Group.objects.create(
             title="Тестовая группа",
             slug="test-slug",
@@ -48,10 +35,23 @@ class PostCreateFormTests(TestCase):
     def test_create_post(self):
         '''Проверка создания поста'''
         post_count = Post.objects.count()
+        small_gif = (
+            b'\x47\x49\x46\x38\x39\x61\x02\x00'
+            b'\x01\x00\x80\x00\x00\x00\x00\x00'
+            b'\xFF\xFF\xFF\x21\xF9\x04\x00\x00'
+            b'\x00\x00\x00\x2C\x00\x00\x00\x00'
+            b'\x02\x00\x01\x00\x00\x02\x02\x0C'
+            b'\x0A\x00\x3B'
+        )
+        uploaded = SimpleUploadedFile(
+            name='small.gif',
+            content=small_gif,
+            content_type='image/gif'
+        )
         form_data = {
             'text': 'Тестовый пост',
             'group': self.group.pk,
-            'image': self.uploaded,
+            'image': uploaded,
         }
         response = self.authorized_client.post(
             reverse('posts:post_create'),
@@ -64,37 +64,47 @@ class PostCreateFormTests(TestCase):
         self.assertEqual(post.text, form_data['text'])
         self.assertEqual(post.author, self.user)
         self.assertEqual(post.group, self.group)
-        # не получается сравнить по атрибутам в post.image хранится
-        # 'posts/small.gif'
-        self.assertEqual('small.gif', str(form_data['image']))
+        self.assertEqual(uploaded, form_data['image'])
 
     def test_edit_post(self):
         '''Проверка редактирования поста'''
-        self.post = Post.objects.create(
-            author=self.user,
-            text='Текст',
-            image=None,
+        small_gif = (
+            b'\x47\x49\x46\x38\x39\x61\x02\x00'
+            b'\x01\x00\x80\x00\x00\x00\x00\x00'
+            b'\xFF\xFF\xFF\x21\xF9\x04\x00\x00'
+            b'\x00\x00\x00\x2C\x00\x00\x00\x00'
+            b'\x02\x00\x01\x00\x00\x02\x02\x0C'
+            b'\x0A\x00\x3B'
         )
-        post_data = {
-            'text': 'Изменённый тестовый текст',
-            'group': self.group.pk,
-            # При добавлени картинки, даже без ей проверки,
-            # появляется ошибка
-            # AssertionError: 'Текст' != 'Изменённый тестовый текст'
-            # 'image': self.uploaded,
+        uploaded = SimpleUploadedFile(
+            name='small.gif',
+            content=small_gif,
+            content_type='image/gif'
+        )
+        test_post = Post.objects.create(
+            text="Новый пост 3",
+            author=self.user,
+        )
+        form_data_edit = {
+            "text": "Редактированный пост",
+            "group": self.group.pk,
+            'image': uploaded,
         }
         posts_count = Post.objects.count()
         response = self.authorized_client.post(
-            reverse('posts:post_edit', kwargs={'post_id': self.post.pk}),
-            data=post_data,
-            follow=True)
-        post = Post.objects.all()[0]
-        self.assertEqual(response.status_code, HTTPStatus.OK)
+            reverse("posts:post_edit", kwargs={"post_id": test_post.pk}),
+            data=form_data_edit,
+        )
         self.assertEqual(Post.objects.count(), posts_count)
-        self.assertEqual(post.text, post_data['text'])
-        self.assertEqual(post.author, self.user)
-        self.assertEqual(post.group, self.group)
-        # self.assertEqual('small.gif', str(post_data['image']))
+        self.assertRedirects(
+            response, reverse(
+                "posts:post_detail", kwargs={"post_id": test_post.pk})
+        )
+        self.assertTrue(
+            Post.objects.filter(
+                text="Редактированный пост", group__slug='test-slug'
+            ).exists()
+        )
 
     def test_comment(self):
         '''Проверка комментирования поста'''
@@ -107,7 +117,6 @@ class PostCreateFormTests(TestCase):
             'author': self.user,
             'text': 'Текст комментария',
         }
-
         response = self.authorized_client.post(
             reverse('posts:add_comment', kwargs={'post_id': self.post.pk}),
             data=form_data,

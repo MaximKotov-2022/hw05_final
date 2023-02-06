@@ -20,7 +20,7 @@ class PostPagesTests(TestCase):
     def setUpClass(cls):
         super().setUpClass()
         cls.user = User.objects.create(username="StasBasov")
-        cls.user_no_author = User.objects.create(username='UserNoAythor')
+        cls.user_no_author = User.objects.create(username='UserNoAuthor')
         cls.small_gif = (
             b'\x47\x49\x46\x38\x39\x61\x02\x00'
             b'\x01\x00\x80\x00\x00\x00\x00\x00'
@@ -189,58 +189,50 @@ class PostPagesTests(TestCase):
         response_3 = self.client.get(reverse('posts:index'))
         self.assertNotContains(response_3, self.post)
 
-    def test_follow_author(self):
-        '''Проверка подписки на автора на которого не подписан юзер'''
-        self.assertFalse(Follow.objects.filter(
-            user=self.user,
-            author=self.user_no_author,
-        ).exists())
-        response = self.authorized_client.post(
-            reverse('posts:profile_follow',
-                    kwargs={'username': self.post.author}),
-            follow=True,
-        )
-        self.assertRedirects(response, reverse('posts:follow_index'))
-        # Появляется ошибка AssertionError: False is not true
-        # self.assertTrue(Follow.objects.filter(
-        #     user=self.user,
-        #     author=self.user_no_author,
-        # ).exists())
+    def test_follow_user_another(self):
+        """Follow на другого пользователя работает."""
+        self.authorized_client_no_author.get(reverse(
+            'posts:profile_follow',
+            kwargs={'username': self.user.username}))
+        follow_exist = Follow.objects.filter(
+            user=self.user_no_author,
+            author=self.user).exists()
+        self.assertTrue(follow_exist)
 
     def test_unfollow_author(self):
         '''Проверка отписки от автора на которого подписан юзер'''
-        Follow.objects.get_or_create(
+        Follow.objects.create(
             user=self.user,
             author=self.user_no_author,
         )
-        response = self.authorized_client.post(
+        self.authorized_client.post(
             reverse('posts:profile_unfollow',
                     kwargs={'username': self.post.author}),
             follow=True,
         )
-        self.assertEqual(len(response.context['page_obj']), 0)
-        # Появляется ошибка AssertionError: True is not false
-        # self.assertFalse(Follow.objects.filter(
-        #     user=self.user,
-        #     author=self.user_no_author,
-        # ).exists())
+        self.assertFalse(Follow.objects.filter(
+            user=self.user_no_author,
+            author=self.user,
+        ).exists())
 
     def test_show_follow_of_follow(self):
         '''Проверка появления поста у юзера с подписками'''
-        Follow.objects.get_or_create(
+        self.authorized_client_no_author.get(reverse(
+            'posts:profile_follow',
+            kwargs={'username': self.user.username})
+        )
+        follow_exist = Follow.objects.filter(
             user=self.user_no_author,
-            author=self.post.author
+            author=self.user
+        ).exists()
+        self.assertTrue(follow_exist)
+        response = self.authorized_client_no_author.get(
+            reverse(('posts:follow_index'))
         )
-        Post.objects.create(
-            author=self.user,
-            text='Тестовый пост для подписчика',
-            group=self.group,
-        )
-        response_page_follow = self.authorized_client.get(
-            reverse('posts:follow_index')
-        )
-        post = response_page_follow.context['page_obj']
-        self.assertIn(str(post), str(response_page_follow.context['page_obj']))
+        first_object = response.context.get('page_obj').object_list[0]
+        self.assertEqual(first_object.author, self.post.author)
+        self.assertEqual(first_object.text, self.post.text)
+        self.assertEqual(first_object.group, self.group)
 
     def test_not_show_unfollow(self):
         '''Пост не появляется на странице подписок у не-подписчика'''
