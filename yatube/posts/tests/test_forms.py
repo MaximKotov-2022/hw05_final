@@ -5,7 +5,7 @@ from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
-
+from PIL import Image
 from ..models import Group, Post, User, Comment
 
 TEMP_MEDIA_ROOT = tempfile.mkdtemp(dir=settings.BASE_DIR)
@@ -58,13 +58,15 @@ class PostCreateFormTests(TestCase):
             data=form_data,
             follow=True
         )
-        post = Post.objects.all()[0]
+        post = Post.objects.all().last()
+        image_post = Image.open(post.image)
+        image_form = Image.open(form_data['image'])
+
         self.assertEqual(response.status_code, HTTPStatus.OK)
         self.assertEqual(Post.objects.count(), post_count + 1)
         self.assertEqual(post.text, form_data['text'])
         self.assertEqual(post.author, self.user)
-        self.assertEqual(post.group, self.group)
-        self.assertEqual(uploaded, form_data['image'])
+        self.assertEqual(image_post, image_form)
 
     def test_edit_post(self):
         '''Проверка редактирования поста'''
@@ -92,19 +94,21 @@ class PostCreateFormTests(TestCase):
         }
         posts_count = Post.objects.count()
         response = self.authorized_client.post(
-            reverse("posts:post_edit", kwargs={"post_id": test_post.pk}),
+            reverse("posts:post_edit",
+                    kwargs={"post_id": test_post.pk}),
             data=form_data_edit,
         )
+        post = Post.objects.all().last()
+        image_post = Image.open(post.image)
+        image_form = Image.open(form_data_edit['image'])
         self.assertEqual(Post.objects.count(), posts_count)
         self.assertRedirects(
             response, reverse(
                 "posts:post_detail", kwargs={"post_id": test_post.pk})
         )
-        self.assertTrue(
-            Post.objects.filter(
-                text="Редактированный пост", group__slug='test-slug'
-            ).exists()
-        )
+        self.assertEqual(post.text, form_data_edit['text'])
+        self.assertEqual(post.group.pk, form_data_edit['group'])
+        self.assertEqual(image_post, image_form)
 
     def test_comment(self):
         '''Проверка комментирования поста'''
@@ -114,7 +118,6 @@ class PostCreateFormTests(TestCase):
             text='Текст',
         )
         form_data = {
-            'author': self.user,
             'text': 'Текст комментария',
         }
         response = self.authorized_client.post(

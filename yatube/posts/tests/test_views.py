@@ -45,6 +45,10 @@ class PostPagesTests(TestCase):
             group=cls.group,
             image=cls.uploaded,
         )
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
         shutil.rmtree(TEMP_MEDIA_ROOT, ignore_errors=True)
 
     def setUp(self):
@@ -191,6 +195,10 @@ class PostPagesTests(TestCase):
 
     def test_follow_user_another(self):
         """Follow на другого пользователя работает."""
+        self.assertFalse(Follow.objects.filter(
+            user=self.user,
+            author=self.user_no_author,
+        ).exists())
         self.authorized_client_no_author.get(reverse(
             'posts:profile_follow',
             kwargs={'username': self.user.username}))
@@ -217,9 +225,9 @@ class PostPagesTests(TestCase):
 
     def test_show_follow_of_follow(self):
         '''Проверка появления поста у юзера с подписками'''
-        self.authorized_client_no_author.get(reverse(
-            'posts:profile_follow',
-            kwargs={'username': self.user.username})
+        Follow.objects.create(
+            user=self.user_no_author,
+            author=self.user
         )
         follow_exist = Follow.objects.filter(
             user=self.user_no_author,
@@ -229,6 +237,10 @@ class PostPagesTests(TestCase):
         response = self.authorized_client_no_author.get(
             reverse(('posts:follow_index'))
         )
+        self.assertIn('page_obj', response.context)
+        posts = Post.objects.all()
+        self.assertIn(self.post, posts)
+
         first_object = response.context.get('page_obj').object_list[0]
         self.assertEqual(first_object.author, self.post.author)
         self.assertEqual(first_object.text, self.post.text)
