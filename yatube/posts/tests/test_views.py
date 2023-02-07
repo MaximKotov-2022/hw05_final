@@ -229,11 +229,6 @@ class PostPagesTests(TestCase):
             user=self.user_no_author,
             author=self.user
         )
-        follow_exist = Follow.objects.filter(
-            user=self.user_no_author,
-            author=self.user
-        ).exists()
-        self.assertTrue(follow_exist)
         response = self.authorized_client_no_author.get(
             reverse(('posts:follow_index'))
         )
